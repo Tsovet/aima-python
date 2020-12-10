@@ -1,28 +1,18 @@
-"""Search (Chapters 3-4)
+"""
+Search (Chapters 3-4)
 
 The way to use this code is to subclass Problem to create a class of problems,
 then create problem instances and solve them with calls to the various search
-functions."""
+functions.
+"""
 
-import bisect
-import math
-import random
 import sys
 from collections import deque
 
-from utils import (
-    is_in, argmin, argmax, argmax_random_tie, probability, weighted_sampler,
-    memoize, print_table, open_data, PriorityQueue, name,
-    distance, vector_add
-)
-
-infinity = float('inf')
+from utils import *
 
 
-# ______________________________________________________________________________
-
-
-class Problem(object):
+class Problem:
     """The abstract class for a formal problem. You should subclass
     this and implement the methods actions and result, and possibly
     __init__, goal_test, and path_cost. Then you will create instances
@@ -62,12 +52,12 @@ class Problem(object):
         """Return the cost of a solution path that arrives at state2 from
         state1 via action, assuming cost c to get up to state1. If the problem
         is such that the path doesn't matter, this function will only look at
-        state2.  If the path does matter, it will consider c and maybe state1
+        state2. If the path does matter, it will consider c and maybe state1
         and action. The default method costs 1 for every step in the path."""
         return c + 1
 
     def value(self, state):
-        """For optimization problems, each state has a value. Hill-climbing
+        """For optimization problems, each state has a value. Hill Climbing
         and related algorithms try to maximize this value."""
         raise NotImplementedError
 
@@ -79,8 +69,8 @@ class Node:
     """A node in a search tree. Contains a pointer to the parent (the node
     that this is a successor of) and to the actual state for this node. Note
     that if a state is arrived at by two paths, then there are two nodes with
-    the same state.  Also includes the action that got us to this state, and
-    the total path_cost (also known as g) to reach the node.  Other functions
+    the same state. Also includes the action that got us to this state, and
+    the total path_cost (also known as g) to reach the node. Other functions
     may add an f and h value; see best_first_graph_search and astar_search for
     an explanation of how the f and h values are handled. You will not need to
     subclass this class."""
@@ -109,9 +99,7 @@ class Node:
     def child_node(self, problem, action):
         """[Figure 3.10]"""
         next_state = problem.result(self.state, action)
-        next_node = Node(next_state, self, action,
-                         problem.path_cost(self.path_cost, self.state,
-                                           action, next_state))
+        next_node = Node(next_state, self, action, problem.path_cost(self.path_cost, self.state, action, next_state))
         return next_node
 
     def solution(self):
@@ -135,6 +123,10 @@ class Node:
         return isinstance(other, Node) and self.state == other.state
 
     def __hash__(self):
+        # We use the hash value of the state
+        # stored in the node instead of the node
+        # object itself to quickly search a node
+        # with the same state in a Hash Table
         return hash(self.state)
 
 
@@ -142,7 +134,10 @@ class Node:
 
 
 class SimpleProblemSolvingAgentProgram:
-    """Abstract framework for a problem-solving agent. [Figure 3.1]"""
+    """
+    [Figure 3.1]
+    Abstract framework for a problem-solving agent.
+    """
 
     def __init__(self, initial_state=None):
         """State is an abstract representation of the state
@@ -181,10 +176,13 @@ class SimpleProblemSolvingAgentProgram:
 
 
 def breadth_first_tree_search(problem):
-    """Search the shallowest nodes in the search tree first.
-        Search through the successors of a problem to find a goal.
-        The argument frontier should be an empty queue.
-        Repeats infinitely in case of loops. [Figure 3.7]"""
+    """
+    [Figure 3.7]
+    Search the shallowest nodes in the search tree first.
+    Search through the successors of a problem to find a goal.
+    The argument frontier should be an empty queue.
+    Repeats infinitely in case of loops.
+    """
 
     frontier = deque([Node(problem.initial)])  # FIFO queue
 
@@ -197,10 +195,13 @@ def breadth_first_tree_search(problem):
 
 
 def depth_first_tree_search(problem):
-    """Search the deepest nodes in the search tree first.
-        Search through the successors of a problem to find a goal.
-        The argument frontier should be an empty queue.
-        Repeats infinitely in case of loops. [Figure 3.7]"""
+    """
+    [Figure 3.7]
+    Search the deepest nodes in the search tree first.
+    Search through the successors of a problem to find a goal.
+    The argument frontier should be an empty queue.
+    Repeats infinitely in case of loops.
+    """
 
     frontier = [Node(problem.initial)]  # Stack
 
@@ -213,12 +214,16 @@ def depth_first_tree_search(problem):
 
 
 def depth_first_graph_search(problem):
-    """Search the deepest nodes in the search tree first.
-        Search through the successors of a problem to find a goal.
-        The argument frontier should be an empty queue.
-        Does not get trapped by loops.
-        If two paths reach a state, only use the first one. [Figure 3.7]"""
+    """
+    [Figure 3.7]
+    Search the deepest nodes in the search tree first.
+    Search through the successors of a problem to find a goal.
+    The argument frontier should be an empty queue.
+    Does not get trapped by loops.
+    If two paths reach a state, only use the first one.
+    """
     frontier = [(Node(problem.initial))]  # Stack
+
     explored = set()
     while frontier:
         node = frontier.pop()
@@ -226,8 +231,7 @@ def depth_first_graph_search(problem):
             return node
         explored.add(node.state)
         frontier.extend(child for child in node.expand(problem)
-                        if child.state not in explored and
-                        child not in frontier)
+                        if child.state not in explored and child not in frontier)
     return None
 
 
@@ -253,7 +257,7 @@ def breadth_first_graph_search(problem):
     return None
 
 
-def best_first_graph_search(problem, f):
+def best_first_graph_search(problem, f, display=False):
     """Search the nodes with the lowest f scores first.
     You specify the function f(node) that you want to minimize; for example,
     if f is a heuristic estimate to the goal, then we have greedy best
@@ -269,6 +273,8 @@ def best_first_graph_search(problem, f):
     while frontier:
         node = frontier.pop()
         if problem.goal_test(node.state):
+            if display:
+                print(len(explored), "paths have been expanded and", len(frontier), "paths remain in the frontier")
             return node
         explored.add(node.state)
         for child in node.expand(problem):
@@ -281,9 +287,9 @@ def best_first_graph_search(problem, f):
     return None
 
 
-def uniform_cost_search(problem):
+def uniform_cost_search(problem, display=False):
     """[Figure 3.14]"""
-    return best_first_graph_search(problem, lambda node: node.path_cost)
+    return best_first_graph_search(problem, lambda node: node.path_cost, display)
 
 
 def depth_limited_search(problem, limit=50):
@@ -321,11 +327,13 @@ def iterative_deepening_search(problem):
 # Pseudocode from https://webdocs.cs.ualberta.ca/%7Eholte/Publications/MM-AAAI2016.pdf
 
 def bidirectional_search(problem):
-    e = problem.find_min_edge()
-    gF, gB = {problem.initial: 0}, {problem.goal: 0}
-    openF, openB = [problem.initial], [problem.goal]
+    e = 0
+    if isinstance(problem, GraphProblem):
+        e = problem.find_min_edge()
+    gF, gB = {Node(problem.initial): 0}, {Node(problem.goal): 0}
+    openF, openB = [Node(problem.initial)], [Node(problem.goal)]
     closedF, closedB = [], []
-    U = infinity
+    U = np.inf
 
     def extend(U, open_dir, open_other, g_dir, g_other, closed_dir):
         """Extend search in given direction"""
@@ -334,14 +342,14 @@ def bidirectional_search(problem):
         open_dir.remove(n)
         closed_dir.append(n)
 
-        for c in problem.actions(n):
+        for c in n.expand(problem):
             if c in open_dir or c in closed_dir:
-                if g_dir[c] <= problem.path_cost(g_dir[n], n, None, c):
+                if g_dir[c] <= problem.path_cost(g_dir[n], n.state, None, c.state):
                     continue
 
                 open_dir.remove(c)
 
-            g_dir[c] = problem.path_cost(g_dir[n], n, None, c)
+            g_dir[c] = problem.path_cost(g_dir[n], n.state, None, c.state)
             open_dir.append(c)
 
             if c in open_other:
@@ -351,28 +359,30 @@ def bidirectional_search(problem):
 
     def find_min(open_dir, g):
         """Finds minimum priority, g and f values in open_dir"""
-        m, m_f = infinity, infinity
+        # pr_min_f isn't forward pr_min instead it's the f-value
+        # of node with priority pr_min.
+        pr_min, pr_min_f = np.inf, np.inf
         for n in open_dir:
             f = g[n] + problem.h(n)
             pr = max(f, 2 * g[n])
-            m = min(m, pr)
-            m_f = min(m_f, f)
+            pr_min = min(pr_min, pr)
+            pr_min_f = min(pr_min_f, f)
 
-        return m, m_f, min(g.values())
+        return pr_min, pr_min_f, min(g.values())
 
     def find_key(pr_min, open_dir, g):
         """Finds key in open_dir with value equal to pr_min
         and minimum g value."""
-        m = infinity
-        state = -1
+        m = np.inf
+        node = Node(-1)
         for n in open_dir:
             pr = max(g[n] + problem.h(n), 2 * g[n])
             if pr == pr_min:
                 if g[n] < m:
                     m = g[n]
-                    state = n
+                    node = n
 
-        return state
+        return node
 
     while openF and openB:
         pr_min_f, f_min_f, g_min_f = find_min(openF, gF)
@@ -389,7 +399,7 @@ def bidirectional_search(problem):
             # Extend backward
             U, openB, closedB, gB = extend(U, openB, openF, gB, gF, closedB)
 
-    return infinity
+    return np.inf
 
 
 # ______________________________________________________________________________
@@ -402,27 +412,25 @@ greedy_best_first_graph_search = best_first_graph_search
 # Greedy best-first search is accomplished by specifying f(n) = h(n).
 
 
-def astar_search(problem, h=None):
+def astar_search(problem, h=None, display=False):
     """A* search is best-first graph search with f(n) = g(n)+h(n).
     You need to specify the h function when you call astar_search, or
     else in your Problem subclass."""
     h = memoize(h or problem.h, 'h')
-    return best_first_graph_search(problem, lambda n: n.path_cost + h(n))
+    return best_first_graph_search(problem, lambda n: n.path_cost + h(n), display)
 
 
 # ______________________________________________________________________________
 # A* heuristics 
 
 class EightPuzzle(Problem):
-    """ The problem of sliding tiles numbered from 1 to 8 on a 3x3 board,
-    where one of the squares is a blank. A state is represented as a tuple of length 9,
-    where element at index i represents the tile number  at index i (0 if it's an empty square) """
+    """ The problem of sliding tiles numbered from 1 to 8 on a 3x3 board, where one of the
+    squares is a blank. A state is represented as a tuple of length 9, where  element at
+    index i represents the tile number  at index i (0 if it's an empty square) """
 
     def __init__(self, initial, goal=(1, 2, 3, 4, 5, 6, 7, 8, 0)):
         """ Define goal state and initialize a problem """
-
-        self.goal = goal
-        Problem.__init__(self, initial, goal)
+        super().__init__(initial, goal)
 
     def find_blank_square(self, state):
         """Return the index of the blank square in a given state"""
@@ -493,11 +501,10 @@ class PlanRoute(Problem):
 
     def __init__(self, initial, goal, allowed, dimrow):
         """ Define goal state and initialize a problem """
-
+        super().__init__(initial, goal)
         self.dimrow = dimrow
         self.goal = goal
         self.allowed = allowed
-        Problem.__init__(self, initial, goal)
 
     def actions(self, state):
         """ Return the actions that can be executed in the given state.
@@ -602,7 +609,7 @@ def recursive_best_first_search(problem, h=None):
             return node, 0  # (The second value is immaterial)
         successors = node.expand(problem)
         if len(successors) == 0:
-            return None, infinity
+            return None, np.inf
         for s in successors:
             s.f = max(s.path_cost + h(s), node.f)
         while True:
@@ -614,20 +621,23 @@ def recursive_best_first_search(problem, h=None):
             if len(successors) > 1:
                 alternative = successors[1].f
             else:
-                alternative = infinity
+                alternative = np.inf
             result, best.f = RBFS(problem, best, min(flimit, alternative))
             if result is not None:
                 return result, best.f
 
     node = Node(problem.initial)
     node.f = h(node)
-    result, bestf = RBFS(problem, node, infinity)
+    result, bestf = RBFS(problem, node, np.inf)
     return result
 
 
 def hill_climbing(problem):
-    """From the initial node, keep choosing the neighbor with highest value,
-    stopping when no neighbor is better. [Figure 4.2]"""
+    """
+    [Figure 4.2]
+    From the initial node, keep choosing the neighbor with highest value,
+    stopping when no neighbor is better.
+    """
     current = Node(problem.initial)
     while True:
         neighbors = current.expand(problem)
@@ -642,7 +652,7 @@ def hill_climbing(problem):
 
 def exp_schedule(k=20, lam=0.005, limit=100):
     """One possible schedule function for simulated annealing"""
-    return lambda t: (k * math.exp(-lam * t) if t < limit else 0)
+    return lambda t: (k * np.exp(-lam * t) if t < limit else 0)
 
 
 def simulated_annealing(problem, schedule=exp_schedule()):
@@ -658,7 +668,7 @@ def simulated_annealing(problem, schedule=exp_schedule()):
             return current.state
         next_choice = random.choice(neighbors)
         delta_e = problem.value(next_choice.state) - problem.value(current.state)
-        if delta_e > 0 or probability(math.exp(delta_e / T)):
+        if delta_e > 0 or probability(np.exp(delta_e / T)):
             current = next_choice
 
 
@@ -677,7 +687,7 @@ def simulated_annealing_full(problem, schedule=exp_schedule()):
             return current.state
         next_choice = random.choice(neighbors)
         delta_e = problem.value(next_choice.state) - problem.value(current.state)
-        if delta_e > 0 or probability(math.exp(delta_e / T)):
+        if delta_e > 0 or probability(np.exp(delta_e / T)):
             current = next_choice
 
 
@@ -728,7 +738,7 @@ class PeakFindingProblem(Problem):
 
     def __init__(self, initial, grid, defined_actions=directions4):
         """The grid is a 2 dimensional array/list whose state is specified by tuple of indices"""
-        Problem.__init__(self, initial)
+        super().__init__(initial)
         self.grid = grid
         self.defined_actions = defined_actions
         self.n = len(grid)
@@ -741,7 +751,7 @@ class PeakFindingProblem(Problem):
         allowed_actions = []
         for action in self.defined_actions:
             next_state = vector_add(state, self.defined_actions[action])
-            if 0 <= next_state[0] <= self.n - 1 and next_state[1] >= 0 and next_state[1] <= self.m - 1:
+            if 0 <= next_state[0] <= self.n - 1 and 0 <= next_state[1] <= self.m - 1:
                 allowed_actions.append(action)
 
         return allowed_actions
@@ -759,10 +769,13 @@ class PeakFindingProblem(Problem):
 
 
 class OnlineDFSAgent:
-    """[Figure 4.21] The abstract class for an OnlineDFSAgent. Override
+    """
+    [Figure 4.21]
+    The abstract class for an OnlineDFSAgent. Override
     update_state method to convert percept to state. While initializing
     the subclass a problem needs to be provided which is an instance of
-    a subclass of the Problem class."""
+    a subclass of the Problem class.
+    """
 
     def __init__(self, problem):
         self.problem = problem
@@ -814,8 +827,7 @@ class OnlineSearchProblem(Problem):
     Carried in a deterministic and a fully observable environment."""
 
     def __init__(self, initial, goal, graph):
-        self.initial = initial
-        self.goal = goal
+        super().__init__(initial, goal)
         self.graph = graph
 
     def actions(self, state):
@@ -871,8 +883,8 @@ class LRTAStarAgent:
                                                     self.H) for b in self.problem.actions(self.s))
 
             # an action b in problem.actions(s1) that minimizes costs
-            self.a = argmin(self.problem.actions(s1),
-                            key=lambda b: self.LRTA_cost(s1, b, self.problem.output(s1, b), self.H))
+            self.a = min(self.problem.actions(s1),
+                         key=lambda b: self.LRTA_cost(s1, b, self.problem.output(s1, b), self.H))
 
             self.s = s1
             return self.a
@@ -896,7 +908,7 @@ class LRTAStarAgent:
 # Genetic Algorithm
 
 
-def genetic_search(problem, fitness_fn, ngen=1000, pmut=0.1, n=20):
+def genetic_search(problem, ngen=1000, pmut=0.1, n=20):
     """Call genetic_algorithm on the appropriate parts of a problem.
     This requires the problem to have states that can mate and mutate,
     plus a value method that scores states."""
@@ -920,14 +932,14 @@ def genetic_algorithm(population, fitness_fn, gene_pool=[0, 1], f_thres=None, ng
         if fittest_individual:
             return fittest_individual
 
-    return argmax(population, key=fitness_fn)
+    return max(population, key=fitness_fn)
 
 
 def fitness_threshold(fitness_fn, f_thres, population):
     if not f_thres:
         return None
 
-    fittest_individual = argmax(population, key=fitness_fn)
+    fittest_individual = max(population, key=fitness_fn)
     if fitness_fn(fittest_individual) >= f_thres:
         return fittest_individual
 
@@ -992,17 +1004,17 @@ def mutate(x, gene_pool, pmut):
 
 
 class Graph:
-    """A graph connects nodes (vertices) by edges (links).  Each edge can also
-    have a length associated with it.  The constructor call is something like:
+    """A graph connects nodes (vertices) by edges (links). Each edge can also
+    have a length associated with it. The constructor call is something like:
         g = Graph({'A': {'B': 1, 'C': 2})
     this makes a graph with 3 nodes, A, B, and C, with an edge of length 1 from
-    A to B,  and an edge of length 2 from A to C.  You can also do:
+    A to B,  and an edge of length 2 from A to C. You can also do:
         g = Graph({'A': {'B': 1, 'C': 2}, directed=False)
     This makes an undirected graph, so inverse links are also added. The graph
     stays undirected; if you add more links with g.connect('B', 'C', 3), then
-    inverse link is also added.  You can use g.nodes() to get a list of nodes,
+    inverse link is also added. You can use g.nodes() to get a list of nodes,
     g.get('A') to get a dict of links out of A, and g.get('A', 'B') to get the
-    length of the link from A to B.  'Lengths' can actually be any object at
+    length of the link from A to B. 'Lengths' can actually be any object at
     all, and nodes can be any hashable object."""
 
     def __init__(self, graph_dict=None, directed=True):
@@ -1072,10 +1084,10 @@ def RandomGraph(nodes=list(range(10)), min_links=2, width=400, height=300,
 
                 def distance_to_node(n):
                     if n is node or g.get(node, n):
-                        return infinity
+                        return np.inf
                     return distance(g.locations[n], here)
 
-                neighbor = argmin(nodes, key=distance_to_node)
+                neighbor = min(nodes, key=distance_to_node)
                 d = distance(g.locations[neighbor], here) * curvature()
                 g.connect(node, neighbor, int(d))
     return g
@@ -1168,7 +1180,7 @@ class GraphProblem(Problem):
     """The problem of searching a graph from one node to another."""
 
     def __init__(self, initial, goal, graph):
-        Problem.__init__(self, initial, goal)
+        super().__init__(initial, goal)
         self.graph = graph
 
     def actions(self, A):
@@ -1180,11 +1192,11 @@ class GraphProblem(Problem):
         return action
 
     def path_cost(self, cost_so_far, A, action, B):
-        return cost_so_far + (self.graph.get(A, B) or infinity)
+        return cost_so_far + (self.graph.get(A, B) or np.inf)
 
     def find_min_edge(self):
         """Find minimum value of edges."""
-        m = infinity
+        m = np.inf
         for d in self.graph.graph_dict.values():
             local_min = min(d.values())
             m = min(m, local_min)
@@ -1200,7 +1212,7 @@ class GraphProblem(Problem):
 
             return int(distance(locs[node.state], locs[self.goal]))
         else:
-            return infinity
+            return np.inf
 
 
 class GraphProblemStochastic(GraphProblem):
@@ -1224,22 +1236,21 @@ class GraphProblemStochastic(GraphProblem):
 
 class NQueensProblem(Problem):
     """The problem of placing N queens on an NxN board with none attacking
-    each other.  A state is represented as an N-element array, where
+    each other. A state is represented as an N-element array, where
     a value of r in the c-th entry means there is a queen at column c,
     row r, and a value of -1 means that the c-th column has not been
-    filled in yet.  We fill in columns left to right.
+    filled in yet. We fill in columns left to right.
     >>> depth_first_tree_search(NQueensProblem(8))
     <Node (7, 3, 0, 2, 5, 1, 6, 4)>
     """
 
     def __init__(self, N):
+        super().__init__(tuple([-1] * N))
         self.N = N
-        self.initial = tuple([-1] * N)
-        Problem.__init__(self, self.initial)
 
     def actions(self, state):
         """In the leftmost empty column, try all non-conflicting rows."""
-        if state[-1] is not -1:
+        if state[-1] != -1:
             return []  # All columns filled; no successors
         else:
             col = state.index(-1)
@@ -1267,7 +1278,7 @@ class NQueensProblem(Problem):
 
     def goal_test(self, state):
         """Check if all columns filled, no conflicts."""
-        if state[-1] is -1:
+        if state[-1] == -1:
             return False
         return not any(self.conflicted(state, state[col], col)
                        for col in range(len(state)))
@@ -1361,7 +1372,7 @@ def boggle_neighbors(n2, cache={}):
 
 def exact_sqrt(n2):
     """If n2 is a perfect square, return its square root, else raise error."""
-    n = int(math.sqrt(n2))
+    n = int(np.sqrt(n2))
     assert n * n == n2
     return n
 

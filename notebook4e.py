@@ -12,11 +12,10 @@ from PIL import Image
 from matplotlib import lines
 from matplotlib.colors import ListedColormap
 
-from games import TicTacToe, alphabeta_player, random_player, Fig52Extended, inf
+from games import TicTacToe, alpha_beta_player, random_player, Fig52Extended
 from learning import DataSet
-from logic import parse_definite_clause, standardize_variables, unify, subst
+from logic import parse_definite_clause, standardize_variables, unify_mm, subst
 from search import GraphProblem, romania_map
-from utils import argmax, argmin
 
 
 # ______________________________________________________________________________
@@ -275,8 +274,8 @@ def make_visualize(slider):
     """Takes an input a sliderand returns callback function
     for timer and animation."""
 
-    def visualize_callback(Visualize, time_step):
-        if Visualize is True:
+    def visualize_callback(visualize, time_step):
+        if visualize is True:
             for i in range(slider.min, slider.max + 1):
                 slider.value = i
                 time.sleep(float(time_step))
@@ -420,10 +419,10 @@ class Canvas_TicTacToe(Canvas):
 
     def __init__(self, varname, player_1='human', player_2='random',
                  width=300, height=350, cid=None):
-        valid_players = ('human', 'random', 'alphabeta')
+        valid_players = ('human', 'random', 'alpha_beta')
         if player_1 not in valid_players or player_2 not in valid_players:
             raise TypeError("Players must be one of {}".format(valid_players))
-        Canvas.__init__(self, varname, width, height, cid)
+        super().__init__(varname, width, height, cid)
         self.ttt = TicTacToe()
         self.state = self.ttt.initial
         self.turn = 0
@@ -447,8 +446,8 @@ class Canvas_TicTacToe(Canvas):
                 # Invalid move
                 return
             move = (x, y)
-        elif player == 'alphabeta':
-            move = alphabeta_player(self.ttt, self.state)
+        elif player == 'alpha_beta':
+            move = alpha_beta_player(self.ttt, self.state)
         else:
             move = random_player(self.ttt, self.state)
         self.state = self.ttt.result(self.state, move)
@@ -516,11 +515,11 @@ class Canvas_TicTacToe(Canvas):
         self.arc_n(x / 3 + 1 / 6, (y / 3 + 1 / 6) * 6 / 7, 1 / 9, 0, 360)
 
 
-class Canvas_minimax(Canvas):
-    """Minimax for Fig52Extended on HTML canvas"""
+class Canvas_min_max(Canvas):
+    """MinMax for Fig52Extended on HTML canvas"""
 
     def __init__(self, varname, util_list, width=800, height=600, cid=None):
-        Canvas.__init__(self, varname, width, height, cid)
+        super().__init__(varname, width, height, cid)
         self.utils = {node: util for node, util in zip(range(13, 40), util_list)}
         self.game = Fig52Extended()
         self.game.utils = self.utils
@@ -541,7 +540,7 @@ class Canvas_minimax(Canvas):
         self.draw_graph()
         self.stack_manager = self.stack_manager_gen()
 
-    def minimax(self, node):
+    def min_max(self, node):
         game = self.game
         player = game.to_move(node)
 
@@ -550,7 +549,7 @@ class Canvas_minimax(Canvas):
                 return game.utility(node, player)
             self.change_list.append(('a', node))
             self.change_list.append(('h',))
-            max_a = argmax(game.actions(node), key=lambda x: min_value(game.result(node, x)))
+            max_a = max(game.actions(node), key=lambda x: min_value(game.result(node, x)))
             max_node = game.result(node, max_a)
             self.utils[node] = self.utils[max_node]
             x1, y1 = self.node_pos[node]
@@ -566,7 +565,7 @@ class Canvas_minimax(Canvas):
                 return game.utility(node, player)
             self.change_list.append(('a', node))
             self.change_list.append(('h',))
-            min_a = argmin(game.actions(node), key=lambda x: max_value(game.result(node, x)))
+            min_a = min(game.actions(node), key=lambda x: max_value(game.result(node, x)))
             min_node = game.result(node, min_a)
             self.utils[node] = self.utils[min_node]
             x1, y1 = self.node_pos[node]
@@ -580,7 +579,7 @@ class Canvas_minimax(Canvas):
         return max_value(node)
 
     def stack_manager_gen(self):
-        self.minimax(0)
+        self.min_max(0)
         for change in self.change_list:
             if change[0] == 'a':
                 self.node_stack.append(change[1])
@@ -641,11 +640,11 @@ class Canvas_minimax(Canvas):
         self.update()
 
 
-class Canvas_alphabeta(Canvas):
+class Canvas_alpha_beta(Canvas):
     """Alpha-beta pruning for Fig52Extended on HTML canvas"""
 
     def __init__(self, varname, util_list, width=800, height=600, cid=None):
-        Canvas.__init__(self, varname, width, height, cid)
+        super().__init__(varname, width, height, cid)
         self.utils = {node: util for node, util in zip(range(13, 40), util_list)}
         self.game = Fig52Extended()
         self.game.utils = self.utils
@@ -668,18 +667,18 @@ class Canvas_alphabeta(Canvas):
         self.draw_graph()
         self.stack_manager = self.stack_manager_gen()
 
-    def alphabeta_search(self, node):
+    def alpha_beta_search(self, node):
         game = self.game
         player = game.to_move(node)
 
-        # Functions used by alphabeta
+        # Functions used by alpha_beta
         def max_value(node, alpha, beta):
             if game.terminal_test(node):
                 self.change_list.append(('a', node))
                 self.change_list.append(('h',))
                 self.change_list.append(('p',))
                 return game.utility(node, player)
-            v = -inf
+            v = -np.inf
             self.change_list.append(('a', node))
             self.change_list.append(('ab', node, v, beta))
             self.change_list.append(('h',))
@@ -708,7 +707,7 @@ class Canvas_alphabeta(Canvas):
                 self.change_list.append(('h',))
                 self.change_list.append(('p',))
                 return game.utility(node, player)
-            v = inf
+            v = np.inf
             self.change_list.append(('a', node))
             self.change_list.append(('ab', node, alpha, v))
             self.change_list.append(('h',))
@@ -731,10 +730,10 @@ class Canvas_alphabeta(Canvas):
             self.change_list.append(('h',))
             return v
 
-        return max_value(node, -inf, inf)
+        return max_value(node, -np.inf, np.inf)
 
     def stack_manager_gen(self):
-        self.alphabeta_search(0)
+        self.alpha_beta_search(0)
         for change in self.change_list:
             if change[0] == 'a':
                 self.node_stack.append(change[1])
@@ -815,13 +814,13 @@ class Canvas_fol_bc_ask(Canvas):
     """fol_bc_ask() on HTML canvas"""
 
     def __init__(self, varname, kb, query, width=800, height=600, cid=None):
-        Canvas.__init__(self, varname, width, height, cid)
+        super().__init__(varname, width, height, cid)
         self.kb = kb
         self.query = query
         self.l = 1 / 20
         self.b = 3 * self.l
         bc_out = list(self.fol_bc_ask())
-        if len(bc_out) is 0:
+        if len(bc_out) == 0:
             self.valid = False
         else:
             self.valid = True
@@ -843,7 +842,7 @@ class Canvas_fol_bc_ask(Canvas):
         def fol_bc_or(KB, goal, theta):
             for rule in KB.fetch_rules_for_goal(goal):
                 lhs, rhs = parse_definite_clause(standardize_variables(rule))
-                for theta1 in fol_bc_and(KB, lhs, unify(rhs, goal, theta)):
+                for theta1 in fol_bc_and(KB, lhs, unify_mm(rhs, goal, theta)):
                     yield ([(goal, theta1[0])], theta1[1])
 
         def fol_bc_and(KB, goals, theta):
@@ -994,7 +993,7 @@ def final_path_colors(initial_node_colors, problem, solution):
 
 def display_visual(graph_data, user_input, algorithm=None, problem=None):
     initial_node_colors = graph_data['node_colors']
-    if user_input == False:
+    if user_input is False:
         def slider_callback(iteration):
             # don't show graph for the first time running the cell calling this function
             try:
@@ -1002,8 +1001,8 @@ def display_visual(graph_data, user_input, algorithm=None, problem=None):
             except:
                 pass
 
-        def visualize_callback(Visualize):
-            if Visualize is True:
+        def visualize_callback(visualize):
+            if visualize is True:
                 button.value = False
 
                 global all_node_colors
@@ -1023,10 +1022,10 @@ def display_visual(graph_data, user_input, algorithm=None, problem=None):
         display(slider_visual)
 
         button = widgets.ToggleButton(value=False)
-        button_visual = widgets.interactive(visualize_callback, Visualize=button)
+        button_visual = widgets.interactive(visualize_callback, visualize=button)
         display(button_visual)
 
-    if user_input == True:
+    if user_input is True:
         node_colors = dict(initial_node_colors)
         if isinstance(algorithm, dict):
             assert set(algorithm.keys()).issubset({"Breadth First Tree Search",
@@ -1056,8 +1055,8 @@ def display_visual(graph_data, user_input, algorithm=None, problem=None):
             except:
                 pass
 
-        def visualize_callback(Visualize):
-            if Visualize is True:
+        def visualize_callback(visualize):
+            if visualize is True:
                 button.value = False
 
                 problem = GraphProblem(start_dropdown.value, end_dropdown.value, romania_map)
@@ -1084,7 +1083,7 @@ def display_visual(graph_data, user_input, algorithm=None, problem=None):
         display(end_dropdown)
 
         button = widgets.ToggleButton(value=False)
-        button_visual = widgets.interactive(visualize_callback, Visualize=button)
+        button_visual = widgets.interactive(visualize_callback, visualize=button)
         display(button_visual)
 
         slider = widgets.IntSlider(min=0, max=1, step=1, value=0)

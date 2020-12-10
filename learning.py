@@ -1,17 +1,13 @@
-"""Learning from examples. (Chapters 18)"""
+"""Learning from examples (Chapters 18)"""
 
 import copy
-import heapq
-import math
-import random
 from collections import defaultdict
-from statistics import mean, stdev
+from statistics import stdev
+
+from qpsolvers import solve_qp
 
 from probabilistic_learning import NaiveBayesLearner
-from utils import (remove_all, unique, mode, argmax, argmax_random_tie, isclose, dotproduct, vector_add,
-                   scalar_vector_product, weighted_sample_with_replacement, num_or_str, normalize, clip, sigmoid,
-                   print_table, open_data, sigmoid_derivative, probability, relu, relu_derivative, tanh,
-                   tanh_derivative, leaky_relu_derivative, elu, elu_derivative, mean_boolean_error, random_weights)
+from utils import *
 
 
 class DataSet:
@@ -195,7 +191,7 @@ class DataSet:
 def parse_csv(input, delim=','):
     r"""
     Input is a string consisting of lines, each line has comma-delimited
-    fields.  Convert this into a list of lists. Blank lines are skipped.
+    fields. Convert this into a list of lists. Blank lines are skipped.
     Fields that look like numbers are converted to numbers.
     The delim defaults to ',' but '\t' and None are also reasonable values.
     >>> parse_csv('1, 2, 3 \n 0, 2, na')
@@ -205,7 +201,7 @@ def parse_csv(input, delim=','):
     return [list(map(num_or_str, line.split(delim))) for line in lines]
 
 
-def err_ratio(predict, dataset, examples=None, verbose=0):
+def err_ratio(predict, dataset, examples=None):
     """
     Return the proportion of the examples that are NOT correctly predicted.
     verbose - 0: No output; 1: Output wrong; 2 (or greater): Output correct
@@ -219,10 +215,6 @@ def err_ratio(predict, dataset, examples=None, verbose=0):
         output = predict(dataset.sanitize(example))
         if output == desired:
             right += 1
-            if verbose >= 2:
-                print('   OK: got {} for {}'.format(desired, example))
-        elif verbose:
-            print('WRONG: got {}, expected {} for {}'.format(output, desired, example))
     return 1 - (right / len(examples))
 
 
@@ -269,9 +261,9 @@ def cross_validation_wrapper(learner, dataset, k=10, trials=1):
     while True:
         errT, errV = cross_validation(learner, dataset, size, k, trials)
         # check for convergence provided err_val is not empty
-        if errT and not isclose(errT[-1], errT, rel_tol=1e-6):
+        if errT and not np.isclose(errT[-1], errT, rtol=1e-6):
             best_size = 0
-            min_val = math.inf
+            min_val = np.inf
             i = 0
             while i < size:
                 if errs[i] < min_val:
@@ -287,7 +279,7 @@ def cross_validation(learner, dataset, size=None, k=10, trials=1):
     """
     Do k-fold cross_validate and return their mean.
     That is, keep out 1/k of the examples for testing on each of k runs.
-    Shuffle the examples first; if trials>1, average over several shuffles.
+    Shuffle the examples first; if trials > 1, average over several shuffles.
     Returns Training error, Validation error
     """
     k = k or len(dataset.examples)
@@ -321,14 +313,13 @@ def leave_one_out(learner, dataset, size=None):
     return cross_validation(learner, dataset, size, len(dataset.examples))
 
 
-# TODO learning_curve needs to be fixed
 def learning_curve(learner, dataset, trials=10, sizes=None):
     if sizes is None:
-        sizes = list(range(2, len(dataset.examples) - 10, 2))
+        sizes = list(range(2, len(dataset.examples) - trials, 2))
 
     def score(learner, size):
         random.shuffle(dataset.examples)
-        return train_test_split(learner, dataset, 0, size)
+        return cross_validation(learner, dataset, size, trials)
 
     return [(size, mean([score(learner, size) for _ in range(trials)])) for size in sizes]
 
@@ -370,7 +361,7 @@ class DecisionFork:
             return self.default_child(example)
 
     def add(self, val, subtree):
-        """Add a branch.  If self.attr = val, go to the given subtree."""
+        """Add a branch. If self.attr = val, go to the given subtree."""
         self.branches[val] = subtree
 
     def display(self, indent=0):
@@ -446,8 +437,8 @@ def DecisionTreeLearner(dataset):
         def I(examples):
             return information_content([count(target, v, examples) for v in values[target]])
 
-        N = len(examples)
-        remainder = sum((len(examples_i) / N) * I(examples_i) for (v, examples_i) in split_by(attr, examples))
+        n = len(examples)
+        remainder = sum((len(examples_i) / n) * I(examples_i) for (v, examples_i) in split_by(attr, examples))
         return I(examples) - remainder
 
     def split_by(attr, examples):
@@ -460,7 +451,7 @@ def DecisionTreeLearner(dataset):
 def information_content(values):
     """Number of bits to represent the probability distribution in values."""
     probabilities = normalize(remove_all(0, values))
-    return sum(-p * math.log2(p) for p in probabilities)
+    return sum(-p * np.log2(p) for p in probabilities)
 
 
 def DecisionListLearner(dataset):
@@ -536,17 +527,17 @@ def LinearLearner(dataset, learning_rate=0.01, epochs=100):
         # pass over all examples
         for example in examples:
             x = [1] + example
-            y = dotproduct(w, x)
+            y = np.dot(w, x)
             t = example[idx_t]
             err.append(t - y)
 
         # update weights
         for i in range(len(w)):
-            w[i] = w[i] + learning_rate * (dotproduct(err, X_col[i]) / num_examples)
+            w[i] = w[i] + learning_rate * (np.dot(err, X_col[i]) / num_examples)
 
     def predict(example):
         x = [1] + example
-        return dotproduct(w, x)
+        return np.dot(w, x)
 
     return predict
 
@@ -578,7 +569,7 @@ def LogisticLinearLeaner(dataset, learning_rate=0.01, epochs=100):
         # pass over all examples
         for example in examples:
             x = [1] + example
-            y = sigmoid(dotproduct(w, x))
+            y = sigmoid(np.dot(w, x))
             h.append(sigmoid_derivative(y))
             t = example[idx_t]
             err.append(t - y)
@@ -586,11 +577,11 @@ def LogisticLinearLeaner(dataset, learning_rate=0.01, epochs=100):
         # update weights
         for i in range(len(w)):
             buffer = [x * y for x, y in zip(err, h)]
-            w[i] = w[i] + learning_rate * (dotproduct(buffer, X_col[i]) / num_examples)
+            w[i] = w[i] + learning_rate * (np.dot(buffer, X_col[i]) / num_examples)
 
     def predict(example):
         x = [1] + example
-        return sigmoid(dotproduct(w, x))
+        return sigmoid(np.dot(w, x))
 
     return predict
 
@@ -624,7 +615,7 @@ def NeuralNetLearner(dataset, hidden_layer_sizes=None, learning_rate=0.01, epoch
         for layer in learned_net[1:]:
             for node in layer:
                 inc = [n.value for n in node.inputs]
-                in_val = dotproduct(inc, node.weights)
+                in_val = dot_product(inc, node.weights)
                 node.value = node.activation(in_val)
 
         # hypothesis
@@ -672,7 +663,7 @@ def BackPropagationLearner(dataset, net, learning_rate, epochs, activation=sigmo
             for layer in net[1:]:
                 for node in layer:
                     inc = [n.value for n in node.inputs]
-                    in_val = dotproduct(inc, node.weights)
+                    in_val = dot_product(inc, node.weights)
                     node.value = node.activation(in_val)
 
             # initialize delta
@@ -692,8 +683,10 @@ def BackPropagationLearner(dataset, net, learning_rate, epochs, activation=sigmo
                 delta[-1] = [tanh_derivative(o_nodes[i].value) * err[i] for i in range(o_units)]
             elif node.activation == elu:
                 delta[-1] = [elu_derivative(o_nodes[i].value) * err[i] for i in range(o_units)]
-            else:
+            elif node.activation == leaky_relu:
                 delta[-1] = [leaky_relu_derivative(o_nodes[i].value) * err[i] for i in range(o_units)]
+            else:
+                return ValueError("Activation function unknown.")
 
             # backward pass
             h_layers = n_layers - 2
@@ -706,20 +699,22 @@ def BackPropagationLearner(dataset, net, learning_rate, epochs, activation=sigmo
                 w = [[node.weights[k] for node in nx_layer] for k in range(h_units)]
 
                 if activation == sigmoid:
-                    delta[i] = [sigmoid_derivative(layer[j].value) * dotproduct(w[j], delta[i + 1])
+                    delta[i] = [sigmoid_derivative(layer[j].value) * dot_product(w[j], delta[i + 1])
                                 for j in range(h_units)]
                 elif activation == relu:
-                    delta[i] = [relu_derivative(layer[j].value) * dotproduct(w[j], delta[i + 1])
+                    delta[i] = [relu_derivative(layer[j].value) * dot_product(w[j], delta[i + 1])
                                 for j in range(h_units)]
                 elif activation == tanh:
-                    delta[i] = [tanh_derivative(layer[j].value) * dotproduct(w[j], delta[i + 1])
+                    delta[i] = [tanh_derivative(layer[j].value) * dot_product(w[j], delta[i + 1])
                                 for j in range(h_units)]
                 elif activation == elu:
-                    delta[i] = [elu_derivative(layer[j].value) * dotproduct(w[j], delta[i + 1])
+                    delta[i] = [elu_derivative(layer[j].value) * dot_product(w[j], delta[i + 1])
+                                for j in range(h_units)]
+                elif activation == leaky_relu:
+                    delta[i] = [leaky_relu_derivative(layer[j].value) * dot_product(w[j], delta[i + 1])
                                 for j in range(h_units)]
                 else:
-                    delta[i] = [leaky_relu_derivative(layer[j].value) * dotproduct(w[j], delta[i + 1])
-                                for j in range(h_units)]
+                    return ValueError("Activation function unknown.")
 
             # update weights
             for i in range(1, n_layers):
@@ -746,7 +741,7 @@ def PerceptronLearner(dataset, learning_rate=0.01, epochs=100):
 
         # forward pass
         for node in o_nodes:
-            in_val = dotproduct(example, node.weights)
+            in_val = dot_product(example, node.weights)
             node.value = node.activation(in_val)
 
         # hypothesis
@@ -777,8 +772,7 @@ def network(input_units, hidden_layer_sizes, output_units, activation=sigmoid):
     """
     layers_sizes = [input_units] + hidden_layer_sizes + [output_units]
 
-    net = [[NNUnit(activation) for _ in range(size)]
-           for size in layers_sizes]
+    net = [[NNUnit(activation) for _ in range(size)] for size in layers_sizes]
     n_layers = len(net)
 
     # make connection
@@ -810,7 +804,202 @@ def init_examples(examples, idx_i, idx_t, o_units):
 
 
 def find_max_node(nodes):
-    return nodes.index(argmax(nodes, key=lambda node: node.value))
+    return nodes.index(max(nodes, key=lambda node: node.value))
+
+
+class SVC:
+
+    def __init__(self, kernel=linear_kernel, C=1.0, verbose=False):
+        self.kernel = kernel
+        self.C = C  # hyper-parameter
+        self.sv_idx, self.sv, self.sv_y = np.zeros(0), np.zeros(0), np.zeros(0)
+        self.alphas = np.zeros(0)
+        self.w = None
+        self.b = 0.0  # intercept
+        self.verbose = verbose
+
+    def fit(self, X, y):
+        """
+        Trains the model by solving a quadratic programming problem.
+        :param X: array of size [n_samples, n_features] holding the training samples
+        :param y: array of size [n_samples] holding the class labels
+        """
+        # In QP formulation (dual): m variables, 2m+1 constraints (1 equation, 2m inequations)
+        self.solve_qp(X, y)
+        sv = self.alphas > 1e-5
+        self.sv_idx = np.arange(len(self.alphas))[sv]
+        self.sv, self.sv_y, self.alphas = X[sv], y[sv], self.alphas[sv]
+
+        if self.kernel == linear_kernel:
+            self.w = np.dot(self.alphas * self.sv_y, self.sv)
+
+        for n in range(len(self.alphas)):
+            self.b += self.sv_y[n]
+            self.b -= np.sum(self.alphas * self.sv_y * self.K[self.sv_idx[n], sv])
+        self.b /= len(self.alphas)
+        return self
+
+    def solve_qp(self, X, y):
+        """
+        Solves a quadratic programming problem. In QP formulation (dual):
+        m variables, 2m+1 constraints (1 equation, 2m inequations).
+        :param X: array of size [n_samples, n_features] holding the training samples
+        :param y: array of size [n_samples] holding the class labels
+        """
+        m = len(y)  # m = n_samples
+        self.K = self.kernel(X)  # gram matrix
+        P = self.K * np.outer(y, y)
+        q = -np.ones(m)
+        lb = np.zeros(m)  # lower bounds
+        ub = np.ones(m) * self.C  # upper bounds
+        A = y.astype(np.float64)  # equality matrix
+        b = np.zeros(1)  # equality vector
+        self.alphas = solve_qp(P, q, A=A, b=b, lb=lb, ub=ub, solver='cvxopt',
+                               sym_proj=True, verbose=self.verbose)
+
+    def predict_score(self, X):
+        """
+        Predicts the score for a given example.
+        """
+        if self.w is None:
+            return np.dot(self.alphas * self.sv_y, self.kernel(self.sv, X)) + self.b
+        return np.dot(X, self.w) + self.b
+
+    def predict(self, X):
+        """
+        Predicts the class of a given example.
+        """
+        return np.sign(self.predict_score(X))
+
+
+class SVR:
+
+    def __init__(self, kernel=linear_kernel, C=1.0, epsilon=0.1, verbose=False):
+        self.kernel = kernel
+        self.C = C  # hyper-parameter
+        self.epsilon = epsilon  # epsilon insensitive loss value
+        self.sv_idx, self.sv = np.zeros(0), np.zeros(0)
+        self.alphas_p, self.alphas_n = np.zeros(0), np.zeros(0)
+        self.w = None
+        self.b = 0.0  # intercept
+        self.verbose = verbose
+
+    def fit(self, X, y):
+        """
+        Trains the model by solving a quadratic programming problem.
+        :param X: array of size [n_samples, n_features] holding the training samples
+        :param y: array of size [n_samples] holding the class labels
+        """
+        # In QP formulation (dual): m variables, 2m+1 constraints (1 equation, 2m inequations)
+        self.solve_qp(X, y)
+
+        sv = np.logical_or(self.alphas_p > 1e-5, self.alphas_n > 1e-5)
+        self.sv_idx = np.arange(len(self.alphas_p))[sv]
+        self.sv, sv_y = X[sv], y[sv]
+        self.alphas_p, self.alphas_n = self.alphas_p[sv], self.alphas_n[sv]
+
+        if self.kernel == linear_kernel:
+            self.w = np.dot(self.alphas_p - self.alphas_n, self.sv)
+
+        for n in range(len(self.alphas_p)):
+            self.b += sv_y[n]
+            self.b -= np.sum((self.alphas_p - self.alphas_n) * self.K[self.sv_idx[n], sv])
+        self.b -= self.epsilon
+        self.b /= len(self.alphas_p)
+
+        return self
+
+    def solve_qp(self, X, y):
+        """
+        Solves a quadratic programming problem. In QP formulation (dual):
+        m variables, 2m+1 constraints (1 equation, 2m inequations).
+        :param X: array of size [n_samples, n_features] holding the training samples
+        :param y: array of size [n_samples] holding the class labels
+        """
+        #
+        m = len(y)  # m = n_samples
+        self.K = self.kernel(X)  # gram matrix
+        P = np.vstack((np.hstack((self.K, -self.K)),  # alphas_p, alphas_n
+                       np.hstack((-self.K, self.K))))  # alphas_n, alphas_p
+        q = np.hstack((-y, y)) + self.epsilon
+        lb = np.zeros(2 * m)  # lower bounds
+        ub = np.ones(2 * m) * self.C  # upper bounds
+        A = np.hstack((np.ones(m), -np.ones(m)))  # equality matrix
+        b = np.zeros(1)  # equality vector
+        alphas = solve_qp(P, q, A=A, b=b, lb=lb, ub=ub, solver='cvxopt',
+                          sym_proj=True, verbose=self.verbose)
+        self.alphas_p = alphas[:m]
+        self.alphas_n = alphas[m:]
+
+    def predict(self, X):
+        if self.kernel != linear_kernel:
+            return np.dot(self.alphas_p - self.alphas_n, self.kernel(self.sv, X)) + self.b
+        return np.dot(X, self.w) + self.b
+
+
+class MultiClassLearner:
+
+    def __init__(self, clf, decision_function='ovr'):
+        self.clf = clf
+        self.decision_function = decision_function
+        self.n_class, self.classifiers = 0, []
+
+    def fit(self, X, y):
+        """
+        Trains n_class or n_class * (n_class - 1) / 2 classifiers
+        according to the training method, ovr or ovo respectively.
+        :param X: array of size [n_samples, n_features] holding the training samples
+        :param y: array of size [n_samples] holding the class labels
+        :return: array of classifiers
+        """
+        labels = np.unique(y)
+        self.n_class = len(labels)
+        if self.decision_function == 'ovr':  # one-vs-rest method
+            for label in labels:
+                y1 = np.array(y)
+                y1[y1 != label] = -1.0
+                y1[y1 == label] = 1.0
+                self.clf.fit(X, y1)
+                self.classifiers.append(copy.deepcopy(self.clf))
+        elif self.decision_function == 'ovo':  # use one-vs-one method
+            n_labels = len(labels)
+            for i in range(n_labels):
+                for j in range(i + 1, n_labels):
+                    neg_id, pos_id = y == labels[i], y == labels[j]
+                    X1, y1 = np.r_[X[neg_id], X[pos_id]], np.r_[y[neg_id], y[pos_id]]
+                    y1[y1 == labels[i]] = -1.0
+                    y1[y1 == labels[j]] = 1.0
+                    self.clf.fit(X1, y1)
+                    self.classifiers.append(copy.deepcopy(self.clf))
+        else:
+            return ValueError("Decision function must be either 'ovr' or 'ovo'.")
+        return self
+
+    def predict(self, X):
+        """
+        Predicts the class of a given example according to the training method.
+        """
+        n_samples = len(X)
+        if self.decision_function == 'ovr':  # one-vs-rest method
+            assert len(self.classifiers) == self.n_class
+            score = np.zeros((n_samples, self.n_class))
+            for i in range(self.n_class):
+                clf = self.classifiers[i]
+                score[:, i] = clf.predict_score(X)
+            return np.argmax(score, axis=1)
+        elif self.decision_function == 'ovo':  # use one-vs-one method
+            assert len(self.classifiers) == self.n_class * (self.n_class - 1) / 2
+            vote = np.zeros((n_samples, self.n_class))
+            clf_id = 0
+            for i in range(self.n_class):
+                for j in range(i + 1, self.n_class):
+                    res = self.classifiers[clf_id].predict(X)
+                    vote[res < 0, i] += 1.0  # negative sample: class i
+                    vote[res > 0, j] += 1.0  # positive sample: class j
+                    clf_id += 1
+            return np.argmax(vote, axis=1)
+        else:
+            return ValueError("Decision function must be either 'ovr' or 'ovo'.")
 
 
 def EnsembleLearner(learners):
@@ -831,21 +1020,21 @@ def ada_boost(dataset, L, K):
     """[Figure 18.34]"""
 
     examples, target = dataset.examples, dataset.target
-    N = len(examples)
-    epsilon = 1 / (2 * N)
-    w = [1 / N] * N
+    n = len(examples)
+    eps = 1 / (2 * n)
+    w = [1 / n] * n
     h, z = [], []
     for k in range(K):
         h_k = L(dataset, w)
         h.append(h_k)
         error = sum(weight for example, weight in zip(examples, w) if example[target] != h_k(example))
         # avoid divide-by-0 from either 0% or 100% error rates
-        error = clip(error, epsilon, 1 - epsilon)
+        error = np.clip(error, eps, 1 - eps)
         for j, example in enumerate(examples):
             if example[target] == h_k(example):
                 w[j] *= error / (1 - error)
         w = normalize(w)
-        z.append(math.log((1 - error) / error))
+        z.append(np.log((1 - error) / error))
     return weighted_majority(h, z)
 
 
@@ -931,9 +1120,20 @@ def weighted_replicate(seq, weights, n):
             weighted_sample_with_replacement(n - sum(wholes), seq, fractions))
 
 
-def flatten(seqs):
-    return sum(seqs, [])
+# metrics
 
+def accuracy_score(y_pred, y_true):
+    assert y_pred.shape == y_true.shape
+    return np.mean(np.equal(y_pred, y_true))
+
+
+def r2_score(y_pred, y_true):
+    assert y_pred.shape == y_true.shape
+    return 1. - (np.sum(np.square(y_pred - y_true)) /  # sum of square of residuals
+                 np.sum(np.square(y_true - np.mean(y_true))))  # total sum of squares
+
+
+# datasets
 
 orings = DataSet(name='orings', target='Distressed', attr_names='Rings Distressed Temp Pressure Flightnum')
 
